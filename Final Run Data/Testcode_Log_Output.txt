@@ -1,0 +1,142 @@
+Config:
+  csv_path: TourismData_Rob_J_Hyndman.csv
+  out_dir: runs_hensgen_nbeats_ncl
+  total_points: 223
+  train_points: 150
+  val_points: 25
+  test_points: 48
+  seq_len: 50
+  horizon: 1
+  use_minmax_scaling: True
+  epochs: 1000
+  batches_per_epoch: 25
+  batch_size: 32
+  eta: 0.005
+  weight_decay: 0.0
+  seeds: (1337, 1338, 1339, 1340, 1341)
+  enc_dim: 1024
+  num_blocks: 6
+  block_hidden_width: 512
+  block_num_layers: 4
+  latent_dim: 512
+  dropout: 0.0
+  use_bn_on_latent: True
+  use_dynamic_alpha: True
+  epoch_period: 100
+  alpha_s_init: 100.0
+  alpha_i: 0.1
+  eps_lc: 1e-12
+  num_workers: 0
+  pin_memory: True
+  device: cuda
+
+Data:
+  T = 228
+  bottom series = 304
+  hierarchy series (n_all) = 555
+  states=7, zones=27, regions=76, purposes=4
+Sanity mean(|y - A y|) on constructed targets (ORIG) = 1.098448e-04
+Scaling: per-series Min-Max fitted on TRAIN slice only; training uses scaled space; reporting uses original units.
+[baseline seed=1337] epoch    1 | train MSE(scaled)=0.202527 | val RMSE(orig)=23928.274551 | val coh(orig)=3789.639160 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch    5 | train MSE(scaled)=0.035548 | val RMSE(orig)=742.536999 | val coh(orig)=151.139252 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch   10 | train MSE(scaled)=0.036738 | val RMSE(orig)=662.375056 | val coh(orig)=188.605225 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch   50 | train MSE(scaled)=0.023687 | val RMSE(orig)=372.311155 | val coh(orig)=40.536587 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch  100 | train MSE(scaled)=0.020334 | val RMSE(orig)=387.292908 | val coh(orig)=5.923589 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch  250 | train MSE(scaled)=0.020191 | val RMSE(orig)=413.427210 | val coh(orig)=1.663881 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch  500 | train MSE(scaled)=0.020729 | val RMSE(orig)=410.475281 | val coh(orig)=1.376838 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch  750 | train MSE(scaled)=0.020152 | val RMSE(orig)=411.805593 | val coh(orig)=0.897078 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1337] epoch 1000 | train MSE(scaled)=0.020265 | val RMSE(orig)=410.480922 | val coh(orig)=0.985772 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch    1 | train MSE(scaled)=0.212917 | val RMSE(orig)=9846.318883 | val coh(orig)=2895.873047 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch    5 | train MSE(scaled)=0.048215 | val RMSE(orig)=1196.339606 | val coh(orig)=376.310089 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch   10 | train MSE(scaled)=0.039521 | val RMSE(orig)=873.570695 | val coh(orig)=247.202911 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch   50 | train MSE(scaled)=0.023749 | val RMSE(orig)=417.231563 | val coh(orig)=2.243570 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch  100 | train MSE(scaled)=0.020532 | val RMSE(orig)=410.053758 | val coh(orig)=1.741715 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch  250 | train MSE(scaled)=0.026129 | val RMSE(orig)=413.486650 | val coh(orig)=1.548610 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch  500 | train MSE(scaled)=0.026660 | val RMSE(orig)=409.818185 | val coh(orig)=0.947202 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch  750 | train MSE(scaled)=0.026830 | val RMSE(orig)=410.589885 | val coh(orig)=1.623143 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1338] epoch 1000 | train MSE(scaled)=0.026795 | val RMSE(orig)=416.523557 | val coh(orig)=1.242020 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch    1 | train MSE(scaled)=0.217565 | val RMSE(orig)=9009.624236 | val coh(orig)=1713.319458 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch    5 | train MSE(scaled)=0.039226 | val RMSE(orig)=3917.856086 | val coh(orig)=408.074402 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch   10 | train MSE(scaled)=0.038945 | val RMSE(orig)=2133.165843 | val coh(orig)=568.216797 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch   50 | train MSE(scaled)=0.026961 | val RMSE(orig)=414.340540 | val coh(orig)=3.545519 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch  100 | train MSE(scaled)=0.026644 | val RMSE(orig)=411.933376 | val coh(orig)=3.840705 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch  250 | train MSE(scaled)=0.026918 | val RMSE(orig)=409.917760 | val coh(orig)=2.830419 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch  500 | train MSE(scaled)=0.026795 | val RMSE(orig)=410.405267 | val coh(orig)=6.247262 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch  750 | train MSE(scaled)=0.027290 | val RMSE(orig)=413.743011 | val coh(orig)=3.136590 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1339] epoch 1000 | train MSE(scaled)=0.026738 | val RMSE(orig)=409.773387 | val coh(orig)=1.456187 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch    1 | train MSE(scaled)=0.200224 | val RMSE(orig)=9391.368677 | val coh(orig)=3748.741699 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch    5 | train MSE(scaled)=0.040278 | val RMSE(orig)=1371.175949 | val coh(orig)=250.982315 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch   10 | train MSE(scaled)=0.047569 | val RMSE(orig)=4688.250753 | val coh(orig)=361.697571 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch   50 | train MSE(scaled)=0.022633 | val RMSE(orig)=446.820377 | val coh(orig)=33.768917 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch  100 | train MSE(scaled)=0.020109 | val RMSE(orig)=321.394253 | val coh(orig)=2.111576 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch  250 | train MSE(scaled)=0.020264 | val RMSE(orig)=250.622438 | val coh(orig)=2.479780 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch  500 | train MSE(scaled)=0.020173 | val RMSE(orig)=227.664664 | val coh(orig)=1.813964 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch  750 | train MSE(scaled)=0.020312 | val RMSE(orig)=240.031008 | val coh(orig)=1.265989 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1340] epoch 1000 | train MSE(scaled)=0.020397 | val RMSE(orig)=318.118041 | val coh(orig)=1.375327 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch    1 | train MSE(scaled)=0.212468 | val RMSE(orig)=1948.697771 | val coh(orig)=765.651611 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch    5 | train MSE(scaled)=0.041898 | val RMSE(orig)=981.208797 | val coh(orig)=181.265549 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch   10 | train MSE(scaled)=0.034967 | val RMSE(orig)=416.006431 | val coh(orig)=11.965833 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch   50 | train MSE(scaled)=0.023178 | val RMSE(orig)=442.687263 | val coh(orig)=14.893003 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch  100 | train MSE(scaled)=0.020469 | val RMSE(orig)=407.864929 | val coh(orig)=3.582955 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch  250 | train MSE(scaled)=0.020148 | val RMSE(orig)=411.134176 | val coh(orig)=2.168780 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch  500 | train MSE(scaled)=0.020256 | val RMSE(orig)=411.942961 | val coh(orig)=0.991269 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch  750 | train MSE(scaled)=0.026697 | val RMSE(orig)=410.375280 | val coh(orig)=1.541324 | alpha=0.000e+00 | lr=5.000e-03
+[baseline seed=1341] epoch 1000 | train MSE(scaled)=0.026648 | val RMSE(orig)=418.692680 | val coh(orig)=1.267678 | alpha=0.000e+00 | lr=5.000e-03
+[ncl seed=1337] epoch    1 | train MSE(scaled)=0.163932 | val RMSE(orig)=7400.292126 | val coh(orig)=551.804688 | alpha=1.000e+02 | lr=1.014e-03
+[ncl seed=1337] epoch    5 | train MSE(scaled)=0.040269 | val RMSE(orig)=2389.475744 | val coh(orig)=3.498981 | alpha=7.883e+03 | lr=5.388e-04
+[ncl seed=1337] epoch   10 | train MSE(scaled)=0.026858 | val RMSE(orig)=259.462512 | val coh(orig)=1.340569 | alpha=1.019e+04 | lr=5.243e-04
+[ncl seed=1337] epoch   50 | train MSE(scaled)=0.015112 | val RMSE(orig)=305.114966 | val coh(orig)=0.239748 | alpha=1.784e+04 | lr=4.952e-04
+[ncl seed=1337] epoch  100 | train MSE(scaled)=0.011274 | val RMSE(orig)=219.521122 | val coh(orig)=0.178248 | alpha=2.287e+04 | lr=4.833e-04
+[ncl seed=1337] epoch  250 | train MSE(scaled)=0.009789 | val RMSE(orig)=221.646551 | val coh(orig)=0.226470 | alpha=1.041e+05 | lr=4.216e-04
+[ncl seed=1337] epoch  500 | train MSE(scaled)=0.003708 | val RMSE(orig)=176.923898 | val coh(orig)=0.225902 | alpha=8.996e+04 | lr=4.268e-04
+[ncl seed=1337] epoch  750 | train MSE(scaled)=0.003641 | val RMSE(orig)=190.822274 | val coh(orig)=0.132421 | alpha=7.764e+04 | lr=4.323e-04
+[ncl seed=1337] epoch 1000 | train MSE(scaled)=0.002317 | val RMSE(orig)=185.926795 | val coh(orig)=0.085302 | alpha=6.297e+04 | lr=4.402e-04
+[ncl seed=1338] epoch    1 | train MSE(scaled)=0.163057 | val RMSE(orig)=4380.784107 | val coh(orig)=515.399780 | alpha=1.000e+02 | lr=1.014e-03
+[ncl seed=1338] epoch    5 | train MSE(scaled)=0.035275 | val RMSE(orig)=503.747620 | val coh(orig)=3.040020 | alpha=6.446e+03 | lr=5.508e-04
+[ncl seed=1338] epoch   10 | train MSE(scaled)=0.026838 | val RMSE(orig)=331.518141 | val coh(orig)=0.791231 | alpha=8.669e+03 | lr=5.334e-04
+[ncl seed=1338] epoch   50 | train MSE(scaled)=0.014878 | val RMSE(orig)=207.581272 | val coh(orig)=0.185279 | alpha=1.631e+04 | lr=4.997e-04
+[ncl seed=1338] epoch  100 | train MSE(scaled)=0.012437 | val RMSE(orig)=205.752470 | val coh(orig)=0.275923 | alpha=2.177e+04 | lr=4.857e-04
+[ncl seed=1338] epoch  250 | train MSE(scaled)=0.005435 | val RMSE(orig)=180.137906 | val coh(orig)=0.093822 | alpha=1.105e+05 | lr=4.195e-04
+[ncl seed=1338] epoch  500 | train MSE(scaled)=0.003940 | val RMSE(orig)=165.569090 | val coh(orig)=0.139474 | alpha=9.523e+04 | lr=4.248e-04
+[ncl seed=1338] epoch  750 | train MSE(scaled)=0.003077 | val RMSE(orig)=190.793688 | val coh(orig)=0.082151 | alpha=7.984e+04 | lr=4.312e-04
+[ncl seed=1338] epoch 1000 | train MSE(scaled)=0.002662 | val RMSE(orig)=176.148831 | val coh(orig)=0.090239 | alpha=6.645e+04 | lr=4.382e-04
+[ncl seed=1339] epoch    1 | train MSE(scaled)=0.167384 | val RMSE(orig)=4150.052575 | val coh(orig)=468.779572 | alpha=1.000e+02 | lr=1.014e-03
+[ncl seed=1339] epoch    5 | train MSE(scaled)=0.034406 | val RMSE(orig)=710.679117 | val coh(orig)=5.666744 | alpha=6.409e+03 | lr=5.511e-04
+[ncl seed=1339] epoch   10 | train MSE(scaled)=0.027510 | val RMSE(orig)=944.056102 | val coh(orig)=0.419733 | alpha=8.005e+03 | lr=5.379e-04
+[ncl seed=1339] epoch   50 | train MSE(scaled)=0.016576 | val RMSE(orig)=673.556574 | val coh(orig)=0.831584 | alpha=1.459e+04 | lr=5.053e-04
+[ncl seed=1339] epoch  100 | train MSE(scaled)=0.009547 | val RMSE(orig)=197.127766 | val coh(orig)=0.332130 | alpha=1.939e+04 | lr=4.912e-04
+[ncl seed=1339] epoch  250 | train MSE(scaled)=0.006295 | val RMSE(orig)=196.823648 | val coh(orig)=0.127630 | alpha=1.012e+05 | lr=4.226e-04
+[ncl seed=1339] epoch  500 | train MSE(scaled)=0.003113 | val RMSE(orig)=177.297572 | val coh(orig)=0.138668 | alpha=8.574e+04 | lr=4.286e-04
+[ncl seed=1339] epoch  750 | train MSE(scaled)=0.003369 | val RMSE(orig)=199.137589 | val coh(orig)=0.092715 | alpha=6.740e+04 | lr=4.376e-04
+[ncl seed=1339] epoch 1000 | train MSE(scaled)=0.002394 | val RMSE(orig)=168.371563 | val coh(orig)=0.148925 | alpha=6.278e+04 | lr=4.404e-04
+[ncl seed=1340] epoch    1 | train MSE(scaled)=0.165902 | val RMSE(orig)=3455.066076 | val coh(orig)=452.069061 | alpha=1.000e+02 | lr=1.014e-03
+[ncl seed=1340] epoch    5 | train MSE(scaled)=0.033125 | val RMSE(orig)=618.331296 | val coh(orig)=2.160719 | alpha=7.281e+03 | lr=5.435e-04
+[ncl seed=1340] epoch   10 | train MSE(scaled)=0.026268 | val RMSE(orig)=1229.347205 | val coh(orig)=0.512231 | alpha=9.681e+03 | lr=5.271e-04
+[ncl seed=1340] epoch   50 | train MSE(scaled)=0.016833 | val RMSE(orig)=309.270410 | val coh(orig)=0.192469 | alpha=1.705e+04 | lr=4.975e-04
+[ncl seed=1340] epoch  100 | train MSE(scaled)=0.012680 | val RMSE(orig)=198.271042 | val coh(orig)=0.265275 | alpha=2.264e+04 | lr=4.838e-04
+[ncl seed=1340] epoch  250 | train MSE(scaled)=0.006762 | val RMSE(orig)=191.489616 | val coh(orig)=0.171489 | alpha=1.019e+05 | lr=4.224e-04
+[ncl seed=1340] epoch  500 | train MSE(scaled)=0.004175 | val RMSE(orig)=171.138014 | val coh(orig)=0.107676 | alpha=7.630e+04 | lr=4.329e-04
+[ncl seed=1340] epoch  750 | train MSE(scaled)=0.002597 | val RMSE(orig)=173.508026 | val coh(orig)=0.080474 | alpha=6.635e+04 | lr=4.382e-04
+[ncl seed=1340] epoch 1000 | train MSE(scaled)=0.002216 | val RMSE(orig)=167.739824 | val coh(orig)=0.136091 | alpha=6.033e+04 | lr=4.419e-04
+[ncl seed=1341] epoch    1 | train MSE(scaled)=0.158084 | val RMSE(orig)=3866.008088 | val coh(orig)=513.966431 | alpha=1.000e+02 | lr=1.014e-03
+[ncl seed=1341] epoch    5 | train MSE(scaled)=0.033639 | val RMSE(orig)=702.528716 | val coh(orig)=6.012189 | alpha=6.198e+03 | lr=5.532e-04
+[ncl seed=1341] epoch   10 | train MSE(scaled)=0.027077 | val RMSE(orig)=381.545005 | val coh(orig)=0.706230 | alpha=7.980e+03 | lr=5.381e-04
+[ncl seed=1341] epoch   50 | train MSE(scaled)=0.015291 | val RMSE(orig)=210.779117 | val coh(orig)=0.309128 | alpha=1.524e+04 | lr=5.031e-04
+[ncl seed=1341] epoch  100 | train MSE(scaled)=0.013578 | val RMSE(orig)=291.193806 | val coh(orig)=0.155640 | alpha=2.080e+04 | lr=4.878e-04
+[ncl seed=1341] epoch  250 | train MSE(scaled)=0.006329 | val RMSE(orig)=174.160543 | val coh(orig)=0.230482 | alpha=1.101e+05 | lr=4.196e-04
+[ncl seed=1341] epoch  500 | train MSE(scaled)=0.003807 | val RMSE(orig)=178.296409 | val coh(orig)=0.132763 | alpha=8.661e+04 | lr=4.282e-04
+[ncl seed=1341] epoch  750 | train MSE(scaled)=0.002997 | val RMSE(orig)=195.569186 | val coh(orig)=0.122905 | alpha=6.974e+04 | lr=4.363e-04
+[ncl seed=1341] epoch 1000 | train MSE(scaled)=0.002408 | val RMSE(orig)=198.563292 | val coh(orig)=0.120564 | alpha=6.260e+04 | lr=4.405e-04
+
+Summary (mean±std across seeds):
+       mode       test_mse                 test_rmse              test_coh  \
+                      mean           std        mean         std      mean   
+0  baseline  149847.969730  80791.119449  373.398263  114.136470  1.747232   
+1       ncl   60763.732853   3136.337269  246.438860    6.287011  0.133374   
+
+            best_val_rmse              
+        std          mean         std  
+0  0.382974    325.542332  102.916579  
+1  0.033712    154.449971    3.604787  
+
+Outputs written to: /home/jovyan/Australian_Tourism_Data/Repository/runs_hensgen_nbeats_ncl
