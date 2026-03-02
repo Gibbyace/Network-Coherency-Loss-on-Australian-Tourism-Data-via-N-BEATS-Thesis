@@ -1,12 +1,21 @@
 # hensgen_nbeats_ncl_testbench.py
-# Baseline (MSE) vs Hensgen Network coherency loss  on Tourism hierarchy.
+# Baseline (MSE) vs Hensgen Network coherency loss (NCL) on Tourism hierarchy.
 # Uses Hensgen protocol: seq_len=50, horizon=1, last 223 points split 150/25/48,
 # 1000 epochs, 25 batches/epoch, Adam, eta=0.005, 5 trials (seeds).
+#
+## - Train on SCALED data (inputs + targets) for optimization benefits
+# - Compute coherency + reported RMSE/MSE in ORIGINAL units by inverse-transforming predictions/targets
+# - Apply NCL regularizer to the last-layer weights/bias in ORIGINAL units:
+#     y_orig = (W a + b) * range + min
+#     W_orig = diag(range) @ W
+#     b_orig = range * b + min
+#
+#
 
 import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -15,7 +24,6 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.checkpoint import checkpoint
 
 
 MONTH_TO_NUM = {
@@ -44,10 +52,13 @@ class Config:
     seq_len: int = 50
     horizon: int = 1
 
-    # Training protocol
+    # Scaling (NEW)
+    use_minmax_scaling: bool = True  # per-series min-max scaling fitted on TRAIN slice only
+
+    # Training
     epochs: int = 1000
     batches_per_epoch: int = 25
-    batch_size: int = 32  # not uniquely specified by "25 batches/epoch"
+    batch_size: int = 32
     eta: float = 0.005
     weight_decay: float = 0.0
 
@@ -55,7 +66,6 @@ class Config:
     seeds: Tuple[int, ...] = (1337, 1338, 1339, 1340, 1341)
 
     # Model (N-BEATS-style -> latent a -> BN -> linear head)
-    # NOTE: input_dim = seq_len * n_series is large; use encoder to reduce.
     enc_dim: int = 1024
     num_blocks: int = 6
     block_hidden_width: int = 512
@@ -65,7 +75,6 @@ class Config:
     use_bn_on_latent: bool = True
 
     # Hensgen NCL settings (soft coherency)
-    # alpha is updated via alpha = (l2/lc)*alpha_s. alpha_s increases by alpha_i every epoch_period.
     use_dynamic_alpha: bool = True
     epoch_period: int = 100
     alpha_s_init: float = 100.0
@@ -91,7 +100,7 @@ def set_seed(seed: int):
 
 
 # ============================================================
-# 2) Load Tourism CSV (raw)
+# 2) Load Tourism CSV
 # ============================================================
 
 def load_tourism_wide(csv_path: Path) -> pd.DataFrame:
@@ -121,21 +130,35 @@ def load_tourism_wide(csv_path: Path) -> pd.DataFrame:
 
 
 # ============================================================
-# 3) Build full Tourism hierarchy from naming convention
-#    bottom columns: <REG><PUR> where REG is 3 letters, PUR in {Hol,Vis,Bus,Oth}
-#    state = REG[0], zone = REG[:2], region = REG[:3]
-#    Levels:
-#      TOTAL (1)
-#      PURPOSE (4)
-#      STATE (S)
-#      STATE×PURPOSE (S*4)
-#      ZONE (Z)
-#      ZONE×PURPOSE (Z*4)
-#      REGION (R)
-#      REGION×PURPOSE bottom (B)
+# 2.1) Min-Max scaling
 # ============================================================
 
-# error detection for if I messed up somewhere.
+def fit_minmax_params(Y: np.ndarray, fit_slice: slice) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Fit per-series min and range (max-min) on Y[fit_slice, :].
+    Returns:
+      mins:  [n]
+      ranges:[n] (0 replaced by 1.0 to avoid division by zero)
+    """
+    Yf = Y[fit_slice, :]
+    mins = Yf.min(axis=0).astype(np.float32)
+    maxs = Yf.max(axis=0).astype(np.float32)
+    ranges = (maxs - mins).astype(np.float32)
+    ranges[ranges == 0.0] = 1.0
+    return mins, ranges
+
+def apply_minmax_scaling(Y: np.ndarray, mins: np.ndarray, ranges: np.ndarray) -> np.ndarray:
+    return ((Y - mins) / ranges).astype(np.float32)
+
+def invert_minmax_scaling(Y_scaled: torch.Tensor, mins_t: torch.Tensor, ranges_t: torch.Tensor) -> torch.Tensor:
+    # broadcast over batch dimension
+    return Y_scaled * ranges_t + mins_t
+
+
+# ============================================================
+# 3) Build full Tourism hierarchy from naming convention
+# ============================================================
+
 def parse_bottom_cols(cols: List[str]) -> List[str]:
     bottom = []
     for c in cols:
@@ -149,23 +172,20 @@ def parse_bottom_cols(cols: List[str]) -> List[str]:
 
 
 def build_S_and_order(bottom_cols: List[str]) -> Dict[str, object]:
-    # bottom indexing
     bottom_cols = list(bottom_cols)
-    bottom_cols.sort()  # deterministic order
+    bottom_cols.sort()
     n_bottom = len(bottom_cols)
 
-    # parse codes
-    region_codes = [c[:3] for c in bottom_cols]   # 3-letter
-    zone_codes = [rc[:2] for rc in region_codes]  # 2-letter
-    state_codes = [rc[:1] for rc in region_codes] # 1-letter
+    region_codes = [c[:3] for c in bottom_cols]
+    zone_codes = [rc[:2] for rc in region_codes]
+    state_codes = [rc[:1] for rc in region_codes]
     purposes = [c[-3:] for c in bottom_cols]
 
     uniq_states = sorted(set(state_codes))
     uniq_zones = sorted(set(zone_codes))
     uniq_regions = sorted(set(region_codes))
-    uniq_purposes = PURPOSES[:]  # fixed
+    uniq_purposes = PURPOSES[:]
 
-    # helpers: indices of bottom series belonging to each group
     idx_by_purpose = {p: [] for p in uniq_purposes}
     idx_by_state = {s: [] for s in uniq_states}
     idx_by_state_purpose = {(s, p): [] for s in uniq_states for p in uniq_purposes}
@@ -181,85 +201,66 @@ def build_S_and_order(bottom_cols: List[str]) -> Dict[str, object]:
         idx_by_zone_purpose[(zc, pc)].append(j)
         idx_by_region[rc].append(j)
 
-    # Build node ordering
     names = []
-
-    # TOTAL
     names.append("TOTAL")
 
-    # PURPOSE totals (4)
     for p in uniq_purposes:
         names.append(f"PUR_{p}")
 
-    # STATE totals
     for s in uniq_states:
         names.append(f"STATE_{s}")
 
-    # STATE×PURPOSE
     for s in uniq_states:
         for p in uniq_purposes:
             names.append(f"STATE_{s}_PUR_{p}")
 
-    # ZONE totals
     for z in uniq_zones:
         names.append(f"ZONE_{z}")
 
-    # ZONE×PURPOSE
     for z in uniq_zones:
         for p in uniq_purposes:
             names.append(f"ZONE_{z}_PUR_{p}")
 
-    # REGION totals
     for r in uniq_regions:
         names.append(f"REGION_{r}")
 
-    # Bottom REGION×PURPOSE (identity)
     for c in bottom_cols:
         names.append(f"BOT_{c[:3]}_{c[-3:]}")
 
     n_all = len(names)
 
-    # Construct S: [n_all, n_bottom]
     S = np.zeros((n_all, n_bottom), dtype=np.float64)
 
     row = 0
-    # TOTAL
     S[row, :] = 1.0
     row += 1
 
-    # PURPOSE
     for p in uniq_purposes:
         S[row, idx_by_purpose[p]] = 1.0
         row += 1
 
-    # STATE
     for s in uniq_states:
         S[row, idx_by_state[s]] = 1.0
         row += 1
 
-    # STATE×PURPOSE
     for s in uniq_states:
         for p in uniq_purposes:
             S[row, idx_by_state_purpose[(s, p)]] = 1.0
             row += 1
 
-    # ZONE
     for z in uniq_zones:
         S[row, idx_by_zone[z]] = 1.0
         row += 1
 
-    # ZONE×PURPOSE
     for z in uniq_zones:
         for p in uniq_purposes:
             S[row, idx_by_zone_purpose[(z, p)]] = 1.0
             row += 1
 
-    # REGION
     for r in uniq_regions:
         S[row, idx_by_region[r]] = 1.0
         row += 1
 
-    # Bottom identity
     S[row:row + n_bottom, :] = np.eye(n_bottom, dtype=np.float64)
     row += n_bottom
     assert row == n_all
@@ -290,16 +291,12 @@ def build_hierarchy_from_bottom(df_wide: pd.DataFrame) -> Dict[str, object]:
     S = so["S"]             # [n_all, n_bottom]
     names = so["names"]
     meta = so["meta"]
-    n_all = meta["n_all"]
 
-    # Build Y_all coherently from bottoms: Y = B @ S^T
     Y_all = (B @ S.T).astype(np.float32)  # [T, n_all]
 
-    # Projection operator A = S S^+
     S_pinv = np.linalg.pinv(S)            # [n_bottom, n_all]
     A = (S @ S_pinv).astype(np.float32)   # [n_all, n_all]
 
-    # sanity: idempotence
     idem = np.max(np.abs((A @ A) - A))
     if idem > 1e-3:
         print(f"[WARN] A idempotence max|A^2-A|={idem:.4e} (check hierarchy construction).")
@@ -314,7 +311,7 @@ def build_hierarchy_from_bottom(df_wide: pd.DataFrame) -> Dict[str, object]:
 
 
 # ============================================================
-# 4) Window dataset and splits (Hensgen: last 223 points, 150/25/48, L=50)
+# 4) Window dataset and splits
 # ============================================================
 
 class WindowedHierarchyDataset(Dataset):
@@ -371,7 +368,7 @@ def infinite_loader(loader: DataLoader):
 
 
 # ============================================================
-# 5) N-BEATS-style backbone (encoded residual) -> latent a -> BN -> linear head
+# 5) N-BEATS implementation
 # ============================================================
 
 class LatentBlock(nn.Module):
@@ -426,28 +423,28 @@ class NBeatsHierarchy(nn.Module):
             for _ in range(num_blocks)
         ])
 
-        self.bn = nn.BatchNorm1d(latent_dim) if use_bn else None
-        self.final_linear = nn.Linear(latent_dim, n_series)
+        self.bn = nn.BatchNorm1d(latent_dim) if use_bn else None #batchnorm
+        self.final_linear = nn.Linear(latent_dim, n_series) #here coerency
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
-        x_flat = x.reshape(B, -1)           # [B, L*n]
-        residual = self.encoder(x_flat)     # [B, enc_dim]
+        x_flat = x.reshape(B, -1)           # [B, L*n] #reshape
+        residual = self.encoder(x_flat)     # [B, enc_dim]#encode
 
         a = torch.zeros((B, self.latent_dim), device=x.device, dtype=x.dtype)
         for blk in self.blocks:
             backcast, latent = blk(residual)
-            residual = residual - backcast
-            a = a + latent
+            residual = residual - backcast #n-beats rest signal
+            a = a + latent # latent a sum
 
         if self.bn is not None:
             a = self.bn(a)
-        yhat = self.final_linear(a)         # [B, n_series]
+        yhat = self.final_linear(a)         # [B, n_series]  (SCALED space if scaling enabled)
         return yhat
 
 
 # ============================================================
-# 6) Hensgen NCL regularizer and metrics
+# 6) Hensgen NCL regularizer and coherency metric (original units)
 # ============================================================
 
 def ncl_regularizer(W: torch.Tensor, b: torch.Tensor, A_t: torch.Tensor) -> torch.Tensor:
@@ -464,7 +461,8 @@ def ncl_regularizer(W: torch.Tensor, b: torch.Tensor, A_t: torch.Tensor) -> torc
 
 def coherency_metric(yhat: torch.Tensor, A_t: torch.Tensor) -> torch.Tensor:
     """
-    mean(|yhat - A yhat|)
+    mean(|yhat - A yhat|) in ROW form implemented as:
+      Ay = yhat @ A^T
     yhat: [B, n], A: [n, n]
     """
     Ay = yhat @ A_t.T
@@ -472,28 +470,69 @@ def coherency_metric(yhat: torch.Tensor, A_t: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def eval_metrics(model: nn.Module, loader: DataLoader, device: str, A_t: torch.Tensor) -> Dict[str, float]:
+def eval_metrics(
+    model: nn.Module,
+    loader: DataLoader,
+    device: str,
+    A_t: torch.Tensor,
+    mins_t: Optional[torch.Tensor] = None,
+    ranges_t: Optional[torch.Tensor] = None,
+) -> Dict[str, float]:
+    """
+    If mins_t/ranges_t provided: model outputs and loader targets are SCALED.
+    We report:
+      - mse_scaled/rmse_scaled (in scaled space)
+      - mse/rmse/coh in ORIGINAL units (via inverse transform), which is what you should use for coherency work.
+    If no scaling: scaled==original.
+    """
     model.eval()
-    sse = 0.0
+
+    # scaled accumulators
+    sse_s = 0.0
     n_elem = 0
+
+    # original accumulators
+    sse_o = 0.0
     coh_sum = 0.0
     n_batches = 0
+
+    use_scaling = (mins_t is not None) and (ranges_t is not None)
 
     for xb, yb in loader:
         xb = xb.to(device, non_blocking=True).float()
         yb = yb.to(device, non_blocking=True).float()
         yhat = model(xb)
 
-        sse += float(torch.sum((yhat - yb) ** 2).item())
+        # scaled mse
+        sse_s += float(torch.sum((yhat - yb) ** 2).item())
         n_elem += int(yb.numel())
 
-        coh_sum += float(coherency_metric(yhat, A_t).item())
+        # original-space metrics
+        if use_scaling:
+            yhat_o = invert_minmax_scaling(yhat, mins_t, ranges_t)
+            yb_o = invert_minmax_scaling(yb, mins_t, ranges_t)
+        else:
+            yhat_o = yhat
+            yb_o = yb
+
+        sse_o += float(torch.sum((yhat_o - yb_o) ** 2).item())
+        coh_sum += float(coherency_metric(yhat_o, A_t).item())
         n_batches += 1
 
-    mse = sse / max(1, n_elem)
+    mse_scaled = sse_s / max(1, n_elem)
+    rmse_scaled = float(np.sqrt(mse_scaled))
+
+    mse = sse_o / max(1, n_elem)
     rmse = float(np.sqrt(mse))
     coh = coh_sum / max(1, n_batches)
-    return {"mse": float(mse), "rmse": float(rmse), "coh": float(coh)}
+
+    return {
+        "mse_scaled": float(mse_scaled),
+        "rmse_scaled": float(rmse_scaled),
+        "mse": float(mse),
+        "rmse": float(rmse),
+        "coh": float(coh),
+    }
 
 
 # ============================================================
@@ -506,17 +545,18 @@ def set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float):
 
 
 def lr_scaled_from_alpha(eta: float, alpha: float) -> float:
-    # Hensgen LR scaling used when alpha varies:
     return float(eta / (1.0 + np.log(1.0 + alpha / 2.0)))
 
 
 def train_run(
     cfg: Config,
-    Y: np.ndarray,
-    A: np.ndarray,
+    Y: np.ndarray,                         # SCALED if cfg.use_minmax_scaling else original
+    A: np.ndarray,                         # ALWAYS original projection matrix
     split_targets: Dict[str, List[int]],
-    mode: str,   # "baseline" or "ncl"
+    mode: str,                             # "baseline" or "ncl"
     seed: int,
+    mins: Optional[np.ndarray] = None,      # per-series min (original units)
+    ranges: Optional[np.ndarray] = None,    # per-series range (original units)
 ) -> Dict[str, object]:
     assert mode in ("baseline", "ncl")
 
@@ -524,6 +564,11 @@ def train_run(
     device = cfg.device
 
     A_t = torch.tensor(A, dtype=torch.float32, device=device)
+
+    use_scaling = (mins is not None) and (ranges is not None)
+
+    mins_t = torch.tensor(mins, dtype=torch.float32, device=device) if use_scaling else None
+    ranges_t = torch.tensor(ranges, dtype=torch.float32, device=device) if use_scaling else None
 
     train_ds = WindowedHierarchyDataset(Y, cfg.seq_len, split_targets["train"])
     val_ds   = WindowedHierarchyDataset(Y, cfg.seq_len, split_targets["val"])
@@ -548,22 +593,22 @@ def train_run(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.eta, weight_decay=cfg.weight_decay)
 
-    # NCL dynamic alpha state
     alpha_s = float(cfg.alpha_s_init)
     alpha = 0.0
 
-    # histories
     hist = {
-        "train_mse": [],
-        "train_lc": [],
+        "train_mse_scaled": [],
+        "train_mse": [],          # ORIGINAL units if scaling enabled, else same as scaled
+        "train_lc": [],           # computed in ORIGINAL units (for NCL) if scaling enabled
         "alpha": [],
         "lr": [],
-        "val_mse": [],
+        "val_mse_scaled": [],
+        "val_rmse_scaled": [],
+        "val_mse": [],            # ORIGINAL units if scaling enabled
         "val_rmse": [],
         "val_coh": [],
     }
 
-    # best checkpoint by val RMSE
     best_val_rmse = float("inf")
     best_state = None
 
@@ -571,14 +616,15 @@ def train_run(
 
     for epoch in range(1, cfg.epochs + 1):
         model.train()
-        sse_epoch = 0.0
+
+        # epoch accumulators
+        sse_epoch_scaled = 0.0
+        sse_epoch_orig = 0.0
         n_elem_epoch = 0
         lc_epoch_sum = 0.0
 
-        # if using varying alpha: start with scaled lr for NCL runs
+        # alpha/lr update 
         if mode == "ncl":
-            # compute alpha based on recent history (or current if no history)
-            # window length
             wlen = min(len(hist["train_mse"]), cfg.epoch_period)
             if wlen >= 1:
                 l2_mean = float(np.mean(hist["train_mse"][-wlen:]))
@@ -586,6 +632,7 @@ def train_run(
             else:
                 l2_mean = 1.0
                 lc_mean = 1.0
+
             alpha = (l2_mean / max(cfg.eps_lc, lc_mean)) * alpha_s
             lr = lr_scaled_from_alpha(cfg.eta, alpha)
             set_optimizer_lr(optimizer, lr)
@@ -600,44 +647,75 @@ def train_run(
             yb = yb.to(device, non_blocking=True).float()
 
             optimizer.zero_grad(set_to_none=True)
-            yhat = model(xb)
+            yhat = model(xb)  # scaled outputs if scaling enabled
 
-            mse_loss = torch.mean((yhat - yb) ** 2)
+            # MSE in scaled space 
+            mse_loss_scaled = torch.mean((yhat - yb) ** 2)
+
+            # Convert to original units for:
+            # - NCL regularizer (so coherency is defined correctly)
+            # - Train MSE (original) used for alpha scheduling
+            if use_scaling:
+                yhat_o = invert_minmax_scaling(yhat, mins_t, ranges_t)
+                yb_o = invert_minmax_scaling(yb, mins_t, ranges_t)
+            else:
+                yhat_o = yhat
+                yb_o = yb
+
+            # original MSE (for logging / alpha schedule consistency)
+            mse_loss_orig = torch.mean((yhat_o - yb_o) ** 2)
 
             if mode == "ncl":
-                W = model.final_linear.weight
-                b = model.final_linear.bias
-                lc = ncl_regularizer(W, b, A_t)
-                loss = mse_loss + float(alpha) * lc
+                W = model.final_linear.weight         # [n, d] in scaled units
+                b = model.final_linear.bias           # [n] in scaled units
+
+                if use_scaling:
+                    # Effective last layer in ORIGINAL units:
+                    # y_orig = (W a + b) * ranges + mins
+                    W_orig = W * ranges_t[:, None]
+                    b_orig = b * ranges_t + mins_t
+                    lc = ncl_regularizer(W_orig, b_orig, A_t)
+                else:
+                    lc = ncl_regularizer(W, b, A_t)
+
+                loss = mse_loss_scaled + float(alpha) * lc
                 lc_epoch_sum += float(lc.detach().item())
             else:
-                loss = mse_loss
+                loss = mse_loss_scaled
 
             loss.backward()
             optimizer.step()
 
-            sse_epoch += float(torch.sum((yhat - yb) ** 2).detach().item())
+            # accumulate scaled SSE
+            sse_epoch_scaled += float(torch.sum((yhat - yb) ** 2).detach().item())
+            # accumulate original SSE
+            sse_epoch_orig += float(torch.sum((yhat_o - yb_o) ** 2).detach().item())
             n_elem_epoch += int(yb.numel())
 
-        train_mse = sse_epoch / max(1, n_elem_epoch)
+        train_mse_scaled = sse_epoch_scaled / max(1, n_elem_epoch)
+        train_mse_orig = sse_epoch_orig / max(1, n_elem_epoch)
         train_lc = (lc_epoch_sum / cfg.batches_per_epoch) if mode == "ncl" else 0.0
 
-        # update alpha_s every epoch_period (Hensgen schedule)
         if mode == "ncl" and cfg.use_dynamic_alpha and (epoch % cfg.epoch_period == 0):
             if cfg.alpha_i > 0:
                 alpha_s += float(cfg.alpha_i)
 
-        # Validation
-        val_metrics = eval_metrics(model, val_loader, device, A_t)
+        # Validation (reports both scaled and original)
+        val_metrics = eval_metrics(model, val_loader, device, A_t, mins_t=mins_t, ranges_t=ranges_t)
 
-        hist["train_mse"].append(float(train_mse))
+        hist["train_mse_scaled"].append(float(train_mse_scaled))
+        hist["train_mse"].append(float(train_mse_orig))
         hist["train_lc"].append(float(train_lc))
         hist["alpha"].append(float(alpha))
         hist["lr"].append(float(lr))
+
+        hist["val_mse_scaled"].append(float(val_metrics["mse_scaled"]))
+        hist["val_rmse_scaled"].append(float(val_metrics["rmse_scaled"]))
         hist["val_mse"].append(float(val_metrics["mse"]))
         hist["val_rmse"].append(float(val_metrics["rmse"]))
         hist["val_coh"].append(float(val_metrics["coh"]))
 
+        # best checkpoint by ORIGINAL val RMSE (the one you report)
         if val_metrics["rmse"] < best_val_rmse:
             best_val_rmse = float(val_metrics["rmse"])
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -645,57 +723,62 @@ def train_run(
         if epoch in (1, 5, 10, 50, 100, 250, 500, 750, 1000):
             print(
                 f"[{mode} seed={seed}] epoch {epoch:4d} | "
-                f"train MSE={train_mse:.6f} | val RMSE={val_metrics['rmse']:.6f} | val coh={val_metrics['coh']:.6f} | "
+                f"train MSE(scaled)={train_mse_scaled:.6f} | "
+                f"val RMSE(orig)={val_metrics['rmse']:.6f} | val coh(orig)={val_metrics['coh']:.6f} | "
                 f"alpha={alpha:.3e} | lr={lr:.3e}"
             )
 
-    # load best
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    test_metrics = eval_metrics(model, test_loader, device, A_t)
+    test_metrics = eval_metrics(model, test_loader, device, A_t, mins_t=mins_t, ranges_t=ranges_t)
 
     return {
         "mode": mode,
         "seed": seed,
         "best_val_rmse": float(best_val_rmse),
-        "test_mse": float(test_metrics["mse"]),
-        "test_rmse": float(test_metrics["rmse"]),
-        "test_coh": float(test_metrics["coh"]),
+        "test_mse": float(test_metrics["mse"]),                 # ORIGINAL
+        "test_rmse": float(test_metrics["rmse"]),               # ORIGINAL
+        "test_coh": float(test_metrics["coh"]),                 # ORIGINAL
+        "test_mse_scaled": float(test_metrics["mse_scaled"]),   # SCALED (optional diagnostics)
+        "test_rmse_scaled": float(test_metrics["rmse_scaled"]),
         "history": hist,
     }
 
 
 # ============================================================
-# 8) Plotting and summarization
+# 8) Plotting
 # ============================================================
 
 def plot_history(hist: Dict[str, List[float]], title: str, out_base: Path):
-    epochs = np.arange(1, len(hist["train_mse"]) + 1)
+    epochs = np.arange(1, len(hist["train_mse_scaled"]) + 1)
 
+    # Plot 1: scaled MSE (training dynamics)
     plt.figure(figsize=(10, 5))
-    plt.plot(epochs, hist["train_mse"], label="train MSE")
-    plt.plot(epochs, hist["val_mse"], label="val MSE")
-    plt.xlabel("Epoch"); plt.ylabel("MSE"); plt.title(title)
+    plt.plot(epochs, hist["train_mse_scaled"], label="train MSE (scaled)")
+    plt.plot(epochs, hist["val_mse_scaled"], label="val MSE (scaled)")
+    plt.xlabel("Epoch"); plt.ylabel("MSE (scaled)"); plt.title(title)
     plt.grid(True); plt.legend(); plt.tight_layout()
-    plt.savefig(out_base.with_suffix(".mse.png"), dpi=150)
+    plt.savefig(out_base.with_suffix(".mse_scaled.png"), dpi=150)
     plt.close()
 
+    # Plot 2: original RMSE (reporting)
     plt.figure(figsize=(10, 5))
-    plt.plot(epochs, hist["val_rmse"], label="val RMSE")
-    plt.xlabel("Epoch"); plt.ylabel("RMSE"); plt.title(title)
+    plt.plot(epochs, hist["val_rmse"], label="val RMSE (original units)")
+    plt.xlabel("Epoch"); plt.ylabel("RMSE (orig)"); plt.title(title)
     plt.grid(True); plt.legend(); plt.tight_layout()
     plt.savefig(out_base.with_suffix(".rmse.png"), dpi=150)
     plt.close()
 
+    # Plot 3: original coherency (reporting)
     plt.figure(figsize=(10, 5))
-    plt.plot(epochs, hist["val_coh"], label="val coherency mean(|yhat-Ayhat|)")
-    plt.xlabel("Epoch"); plt.ylabel("Coherency"); plt.title(title)
-    plt.grid(True); pltlegend = plt.legend(); plt.tight_layout()
+    plt.plot(epochs, hist["val_coh"], label="val coherency mean(|yhat-Ayhat|) (orig)")
+    plt.xlabel("Epoch"); plt.ylabel("Coherency (orig)"); plt.title(title)
+    plt.grid(True); plt.legend(); plt.tight_layout()
     plt.savefig(out_base.with_suffix(".coh.png"), dpi=150)
     plt.close()
 
-    # Optional diagnostics for NCL runs
+    # diagnostics for NCL runs
     if np.max(hist["alpha"]) > 0:
         plt.figure(figsize=(10, 5))
         plt.plot(epochs, hist["alpha"], label="alpha")
@@ -704,23 +787,6 @@ def plot_history(hist: Dict[str, List[float]], title: str, out_base: Path):
         plt.savefig(out_base.with_suffix(".alpha.png"), dpi=150)
         plt.close()
 
-
-def plot_scatter(results: List[Dict[str, object]], out_path: Path):
-    plt.figure(figsize=(7, 6))
-    for r in results:
-        plt.scatter(r["test_rmse"], r["test_coh"], alpha=0.8, label=r["mode"])
-    plt.xlabel("Test RMSE")
-    plt.ylabel("Test coherency mean(|yhat - A yhat|)")
-    plt.title("Test RMSE vs Test coherency (per seed)")
-    plt.grid(True)
-    handles, labels = plt.gca().get_legend_handles_labels()
-    uniq = {}
-    for h, l in zip(handles, labels):
-        uniq.setdefault(l, h)
-    plt.legend(list(uniq.values()), list(uniq.keys()))
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
-    plt.close()
 
 
 def summarize_results(results: List[Dict[str, object]]) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -731,6 +797,8 @@ def summarize_results(results: List[Dict[str, object]]) -> Tuple[pd.DataFrame, p
         "test_mse": r["test_mse"],
         "test_rmse": r["test_rmse"],
         "test_coh": r["test_coh"],
+        "test_mse_scaled": r.get("test_mse_scaled", np.nan),
+        "test_rmse_scaled": r.get("test_rmse_scaled", np.nan),
     } for r in results])
 
     summary = (
@@ -758,8 +826,8 @@ def main():
 
     df_wide = load_tourism_wide(cfg.csv_path)
     built = build_hierarchy_from_bottom(df_wide)
-    Y_all = built["Y_all"]   # [T, n_all]
-    A = built["A"]           # [n_all, n_all]
+    Y_all = built["Y_all"]   # [T, n_all] ORIGINAL coherent
+    A = built["A"]           # [n_all, n_all] ORIGINAL projection
     meta = built["meta"]
 
     print(f"\nData:")
@@ -768,22 +836,34 @@ def main():
     print(f"  hierarchy series (n_all) = {meta['n_all']}")
     print(f"  states={len(meta['states'])}, zones={len(meta['zones'])}, regions={len(meta['regions'])}, purposes={len(meta['purposes'])}")
 
-    # sanity: constructed Y is coherent
+    # sanity: constructed Y is coherent in ORIGINAL units
     coh_true = float(np.mean(np.abs(Y_all - (Y_all @ A.T))))
-    print(f"Sanity mean(|y - A y|) on constructed targets = {coh_true:.6e}")
+    print(f"Sanity mean(|y - A y|) on constructed targets (ORIG) = {coh_true:.6e}")
 
     splits = make_splits(meta["T"], cfg)
+
+    # Fit scaling on TRAIN SLICE ONLY (no leakage), then scale ALL Y for window extraction
+    mins = None
+    ranges = None
+    Y_used = Y_all
+
+    if cfg.use_minmax_scaling:
+        start = meta["T"] - cfg.total_points
+        train_end = start + cfg.train_points
+        mins, ranges = fit_minmax_params(Y_all, slice(start, train_end))
+        Y_used = apply_minmax_scaling(Y_all, mins, ranges)
+        print("Scaling: per-series Min-Max fitted on TRAIN slice only; training uses scaled space; reporting uses original units.")
 
     results: List[Dict[str, object]] = []
 
     # Baseline (MSE only)
     for seed in cfg.seeds:
-        r = train_run(cfg, Y_all, A, splits, mode="baseline", seed=seed)
+        r = train_run(cfg, Y_used, A, splits, mode="baseline", seed=seed, mins=mins, ranges=ranges)
         results.append(r)
 
     # Hensgen NCL (soft coherency)
     for seed in cfg.seeds:
-        r = train_run(cfg, Y_all, A, splits, mode="ncl", seed=seed)
+        r = train_run(cfg, Y_used, A, splits, mode="ncl", seed=seed, mins=mins, ranges=ranges)
         results.append(r)
 
     df_runs, df_summary = summarize_results(results)
@@ -804,13 +884,4 @@ def main():
 
 
 if __name__ == "__main__":
-    #assert A.shape[0] == A.shape[1] == Y_all.shape[1]
-    #assert ImA.shape == A.shape
-    # debug only
-    #I = torch.eye(Y_all.shape[1], device=cfg.device)
-    #W = model.final_linear.weight
-    #b = model.final_linear.bias
-    #assert float(ncl_regularizer(W, b, I - I).item()) == 0.0
     main()
-    
-
