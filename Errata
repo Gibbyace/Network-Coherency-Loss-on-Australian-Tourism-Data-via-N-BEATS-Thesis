@@ -1,0 +1,12 @@
+In die Thesis haben sich einige Formatierungs- und Rechtschreibfehler eingeschlichen. Diese werden in diesem Dokument betrachtet und korrigiert. 
+
+
+Auf Seite 7 steht: „Gegen die Verwendung der Wirkungsprognose spricht die Schwierigkeit der Realitätsmodellierung und der darin enthaltenen Interdependenzen, welche zur Vereinfachung als lineare Beziehungen angenommen werden (2.5.1).” Es müsste (vgl. 2.5.1) stehen. 
+Auf Seite 11 steht: „Basierend auf Crone [5, S. 164 ff.], Haben [8, S. 171 ff.] und [7] funktioniert.” Es müsste „[…] und Goodfellow [7] funktioniert” stehen. 
+Seite 20: „Koherent” vermischt die deutsche und englische Schreibweise. Es müsste entweder „Coherent” oder „Kohärent” stehen.
+Seite 21: „Im Unterschied zu reinen Regularisierern wird hier eine explizite Abgleichsoperation in die Architektur eingebaut.” Statt „Regularisierern” müsste „Regularisierungstermen” stehen. 
+Auf Seite 22 steht „Angenommen, es handelt sich um ein”, was eine Leiche ist und gestrichen werden müsste. 
+Seite 24: „ncl!” ist ein LaTeX-Formatierungsfehler und müsste als „NCL” verbessert werden.
+Seite 26: „Die Änderungen:” ist eine weitere Leiche und müsste auch gestrichen werden.
+
+
