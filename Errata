@@ -8,5 +8,8 @@ Seite 21: „Im Unterschied zu reinen Regularisierern wird hier eine explizite A
 Auf Seite 22 steht „Angenommen, es handelt sich um ein”, was eine Leiche ist und gestrichen werden müsste. 
 Seite 24: „ncl!” ist ein LaTeX-Formatierungsfehler und müsste als „NCL” verbessert werden.
 Seite 26: „Die Änderungen:” ist eine weitere Leiche und müsste auch gestrichen werden.
+Seite 35: Kein Fehler Per se aber es fehlt die Berechungsformel. Die Formel lautet ((Basis - NCL) / Basis) * 100. 
+Seite 36: Standardabweichung roh ca 6 wird angegeben aber im vorherigen Satz die genauere Basis-abweichung verwendet. Daher muss auch roh ca 6,29 dort stehen. 
+
 
 
